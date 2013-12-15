@@ -109,7 +109,7 @@ public class ContributeurFacadeREST extends AbstractFacade<Contributeur>
   protected EntityManager getEntityManager()
   {
 //    return em;
-    return ContribsOSM.f_entités;
+    return ContribsOSM.F_entités;
   }
   
 }

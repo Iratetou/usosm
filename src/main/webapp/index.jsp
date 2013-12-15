@@ -11,7 +11,10 @@
     </head>
     <body>
         <h1>Qui débute ?</h1>
-        <p>Présente les pseudos qui ont franchi 10 changesets</p>
+        <div>
+          <p>Présente les pseudos qui ont franchi 10 changesets</p>
+          <p>Voir le site du projet à <a href="https://github.com/Iratetou/usosm">https://github.com/Iratetou/usosm</a></p>
+        </div>
         <p>
           <c:set var="places" value="${ap.placesDeChangement}"/>
           <c:forEach var="rap" items="${ap.rapports}">

@@ -109,7 +109,7 @@ public class DiffFacadeREST extends AbstractFacade<Diff>
   protected EntityManager getEntityManager()
   {
 //    return em;
-    return ContribsOSM.f_entités;
+    return ContribsOSM.F_entités;
   }
   
 }

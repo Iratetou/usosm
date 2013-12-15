@@ -2,6 +2,7 @@
  */
 package com.diaam.usosm;
 
+import com.diaam.usosm.edi.CommeDesFluxDeDiffs;
 import com.diaam.usosm.edi.ContribsOSM;
 import com.diaam.usosm.edi.entities.Diff;
 import com.diaam.usosm.edi.entities.Tities;
@@ -15,8 +16,9 @@ import java.io.InputStreamReader;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
+//import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import javax.persistence.EntityManager;
 import javax.persistence.EntityTransaction;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
@@ -28,6 +30,7 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
 
 /**
  * Web application lifecycle listener.
@@ -35,15 +38,16 @@ import org.xml.sax.SAXException;
  * @author herve
  */
 @WebListener()
-public class EnGarde implements ServletContextListener
+public final class EnGarde implements ServletContextListener
 {
-//  private static final Semaphore m_lock = new Semaphore(1);
-  
   private ListeningScheduledExecutorService t_exec;
-  private CloseableHttpClient t_cliHTTP;
-  private String t_précédenteLigneDeSéquence;
   private Tities t_tities;
   private ContribsOSM t_contribs;
+  private EcouteurDesDiffs t_desDiffs;
+
+  public EnGarde()
+  {
+  }
   
   @Override
   public void contextInitialized(ServletContextEvent sce)
@@ -52,13 +56,13 @@ public class EnGarde implements ServletContextListener
     {
       sce.getServletContext().log("Et OOOOOoooouuuuiiiiii....");
       t_contribs = new ContribsOSM();
-      t_contribs.f_entités.getTransaction().begin();
+      t_contribs.F_entités.getTransaction().begin();
       t_tities = t_contribs.f_tities;
-      t_cliHTTP = HttpClients.createDefault();
+      t_desDiffs = new EcouteurDesDiffs(t_contribs);
       t_exec = MoreExecutors.listeningDecorator(
        Executors.newSingleThreadScheduledExecutor());
       ListenableScheduledFuture<?> nable = t_exec.scheduleAtFixedRate(
-       new EcouteurDesDiffs(), 10, 3600, TimeUnit.SECONDS);
+       t_desDiffs, 10, 3600, TimeUnit.SECONDS);
       Futures.addCallback(nable, new ResultatEcoute());
       sce.getServletContext().setAttribute("ap", new ApEnBean(t_tities));
     }
@@ -73,15 +77,15 @@ public class EnGarde implements ServletContextListener
     try
     {
       
-      if (t_cliHTTP != null)
-        t_cliHTTP.close();
+      if (t_desDiffs != null)
+        t_desDiffs.m_cliHTTP.close();
       if (t_exec != null)
         t_exec.shutdown();
       if (t_contribs != null)
       {
         EntityTransaction et;
         
-        et = t_contribs.f_entités.getTransaction(); 
+        et = t_contribs.F_entités.getTransaction(); 
         if (et.isActive())
           if (!et.getRollbackOnly())
             et.commit();
@@ -98,49 +102,70 @@ public class EnGarde implements ServletContextListener
     }
   }
 
-  private class EcouteurDesDiffs implements java.lang.Runnable
+  public final static class EcouteurDesDiffs implements java.lang.Runnable
   {
+    private final CloseableHttpClient m_cliHTTP;
+    private String m_précédenteLigneDeSéquence;
+    private final ContribsOSM m_osm;
+    private CommeDesFluxDeDiffs m_fluxDeDiffs;
+
+    public EcouteurDesDiffs(ContribsOSM osm)
+    {
+      m_cliHTTP = HttpClients.createDefault();
+      m_précédenteLigneDeSéquence = "";
+      m_osm = osm;
+      m_fluxDeDiffs = new CommeDesFluxDeDiffs.SurWeb();
+    }
+    
     @Override
     public void run()
     {
+      Diff diff;
+      EntityManager em;
+      
+      diff = null;
+      em = m_osm.f_entités;
       try
       {
-        HttpGet getstate;
-        CloseableHttpResponse responsestate;
-        InputStreamReader isr;
-        BufferedReader br;
+        BufferedReader pl;
+        String lnseq;
       
-        getstate = new HttpGet(ContribsOSM.uriDiffs().resolve("state.txt"));
-        responsestate = t_cliHTTP.execute(getstate);
-        isr = new InputStreamReader(responsestate.getEntity().getContent());
-        br = new BufferedReader(isr);
-        br.readLine();
-        String lnseq = br.readLine();
-        if (!lnseq.equals(t_précédenteLigneDeSéquence))
+        pl = new BufferedReader(m_fluxDeDiffs.state());
+        pl.readLine();
+        lnseq = pl.readLine();
+        if (!lnseq.equals(m_précédenteLigneDeSéquence))
         {
           long seq;
           
           seq = Long.valueOf(lnseq.substring(lnseq.indexOf('=')+1)).longValue();
-          if (!t_tities.diff(seq).isPresent())
+          if (!m_osm.f_tities.diff(seq).isPresent())
           {
-            Diff diff;
+            String lntimestamp;
             
             diff = new Diff();
             diff.setSequenceNumber(seq);
-            String lntimestamp = br.readLine();
+            lntimestamp = pl.readLine();
             String strtimestamp = lntimestamp
              .substring(lntimestamp.indexOf('=') + 1)
              .replaceAll("\\\\", "");
             Date dttimestamp = 
              ContribsOSM.dateFormatDansLesDiffs().parse(strtimestamp);
-            diff.setTimestamp(dttimestamp);            
-            t_contribs.f_entités.persist(diff);
-            t_contribs.analyseDayDiffEtFaitLeRapport(diff);
+            diff.setTimestamp(dttimestamp);
+            if (!em.getTransaction().isActive())
+              em.getTransaction().begin();
+            em.persist(diff);
+            m_osm.analyseDayDiffEtFaitLeRapport(diff, m_fluxDeDiffs);
           }
-          t_précédenteLigneDeSéquence = lnseq;
+          m_précédenteLigneDeSéquence = lnseq;
         }
-        br.close();
-        responsestate.close();
+        pl.close();
+      }
+      catch (SAXParseException parsex)
+      {
+        LoggerFactory.getLogger(getClass()).warn(
+         diff == null ? "diff null" : diff.toString(), parsex);
+        if (diff != null)
+          em.remove(diff);
       }
       catch (
        IOException
@@ -151,6 +176,16 @@ public class EnGarde implements ServletContextListener
         LoggerFactory.getLogger(getClass()).warn(null, mince);
       }
     } 
+  
+    public void setFluxDeDiff(CommeDesFluxDeDiffs flux) 
+    {
+      m_fluxDeDiffs = flux;
+    }
+
+    public CommeDesFluxDeDiffs getFluxDeDiffs()
+    {
+      return m_fluxDeDiffs;
+    }
   }
   
   private static class ResultatEcoute implements 

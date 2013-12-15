@@ -10,32 +10,21 @@ import com.diaam.usosm.edi.entities.Tities;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import java.io.BufferedReader;
-import java.io.FileInputStream;
-import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.Reader;
 import java.net.URI;
-import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
-import java.util.zip.GZIPInputStream;
 import javax.persistence.*;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.slf4j.LoggerFactory;
 import org.xml.sax.Attributes;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
@@ -52,20 +41,45 @@ public final class ContribsOSM implements java.io.Closeable
   private final static SimpleDateFormat DATE_FORMAT_DIFF = 
    new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");;
 
-  public static final EntityManagerFactory f_fabriqueDesEntités;
-  public static final EntityManager f_entités;
+  // N'utiliser ces statics que pour le rest jersey
+  // ... c'est à dire ne jamais utiliser ces statics.
+  private static final EntityManagerFactory F_fabriqueDesEntités;
+  public static final EntityManager F_entités;
+  //
   
   static
   {
-    f_fabriqueDesEntités = Persistence.createEntityManagerFactory(
+    F_fabriqueDesEntités = Persistence.createEntityManagerFactory(
      "contribsosm");
-    f_entités = f_fabriqueDesEntités.createEntityManager();    ;
+    F_entités = F_fabriqueDesEntités.createEntityManager();
   }
   
   public final Tities f_tities;
+  private final EntityManagerFactory f_fabriqueDesEntités;
+  public final EntityManager f_entités;
 
   public ContribsOSM()
   {
+    f_tities = new Tities(F_entités);
+    f_fabriqueDesEntités = F_fabriqueDesEntités;
+    f_entités = F_entités;
+  }
+  
+  /**
+   * Ne pas utiliser. Suite à situation que j'arrive pas à démerder avec Jersey.
+   * Pour les tests surtout, et annule les fonctions Rest ;
+   * je n'ai pas trouvé comment utiliser jersey sans variables 
+   * static, ce qui bousille mon organisation.
+   * 
+   * @param mapJPA 
+   */
+  public ContribsOSM(Map mapJPA)
+  {
+    F_entités.close();
+    F_fabriqueDesEntités.close();
+    f_fabriqueDesEntités = Persistence.createEntityManagerFactory(
+     "contribsosm", mapJPA);
+    f_entités = f_fabriqueDesEntités.createEntityManager();
     f_tities = new Tities(f_entités);
   }
   
@@ -142,68 +156,22 @@ public final class ContribsOSM implements java.io.Closeable
           case "relation":
             String strchange;
             boolean mêmequeprécédent;
-//            String struser;
             String struid;
 
             strchange = attributes.getValue("changeset");
-//            struser = attributes.getValue("user");
             struid = attributes.getValue("uid");
             mêmequeprécédent = 
              struid.equals(t_précédentUID) 
              && strchange.equals(t_précédentChangeset);
             if (!mêmequeprécédent)
             {
-//              if (struser.equals(t_précédentUID))
               if (struid.equals(t_précédentUID))
                 ajouteChangeSetSiAbsent(t_précédentContributeur, attributes);
               else
               {
-//                List corresp;
                 Contributeur buteur;
-//                Long uid;
 
-////              System.out.println(
-////               attributes.getValue("user")
-////               + " ** "
-////               + attributes.getValue("changeset"));
-////                m_selectCorrespondant.setParameter("nom", struser);
-////                corresp = m_selectCorrespondant.getResultList();
-////                if (corresp.isEmpty())
-//                buteur = contributeurs.get(struser);
                 buteur = contributeurs.get(Long.parseLong(struid));
-//System.out.println("buteur="+buteur+", struser="+struser)                ;
-////                {
-//                  Changeset change;
-//
-//                  buteur = new Contributeur();
-//                  buteur.setNom(struser);
-//                  buteur.setChangesets(new ArrayList<Changeset>());
-//                  change = new Changeset();
-//                  change.setIdSet(strchange);
-//                  buteur.getChangesets().add(change);
-//                  m_entities.persist(buteur);
-////                System.out.println("ajout " + attributes.getValue("user"));
-//                }
-//                else
-//                {
-////                boolean changepaslà;
-//
-//                  buteur = (Contributeur) corresp.get(0);
-////                changepaslà = true;
-////                for (Changeset change : buteur.getChangesets())
-////                  if (change.getIdSet().equals(strchange))
-////                  {
-////                    changepaslà = false;
-////                    break;
-////                  }
-////                if (changepaslà)
-////                {
-////                  Changeset change;
-////
-////                  change = new Changeset();
-////                  change.setIdSet(strchange);
-////                  buteur.getChangesets().add(change);
-////                }
                   ajouteChangeSetSiAbsent(buteur, attributes);
                   if (buteur.getId() == null)
                     m_entities.persist(buteur);
@@ -255,6 +223,7 @@ public final class ContribsOSM implements java.io.Closeable
         change.setMaxLat(xmlAttributs.getValue("min_lat"));
         change.setMaxLat(xmlAttributs.getValue("max_lon"));
         change.setMaxLat(xmlAttributs.getValue("min_lon"));
+        m_entities.persist(change);
         contributeur.getChangesets().add(change);
       }
     }
@@ -314,59 +283,64 @@ public final class ContribsOSM implements java.io.Closeable
     return DATE_FORMAT_DIFF;
   }
   
-  public void analyseDayDiffEtFaitLeRapport(Diff sequence) throws 
+  public void analyseDayDiffEtFaitLeRapport(
+   Diff sequence, CommeDesFluxDeDiffs flux) throws 
    IOException, ParserConfigurationException, SAXException
   {
     ManipSAX manipsax;
     long seqnumb;
-    CloseableHttpClient httpclientdiff;
+//    CloseableHttpClient httpclientdiff;
     SAXParserFactory spf;
     SAXParser sp;
     XMLReader xmlrdiffs;
     Rapport rap;
+    Reader readday;
     
       manipsax = new ManipSAX(f_entités);
-      httpclientdiff = HttpClients.createDefault();
-//      HttpGet getdiffstate = new HttpGet(
-//       "http://planet.openstreetmap.org/replication/day/000/000/"
-//       +sequence.getSequenceNumber()
-//       +".state.txt");
-//      CloseableHttpResponse responsestate = httpclientdiff.execute(
-//       getdiffstate);
-//      InputStreamReader isr = new InputStreamReader(
-//       responsestate.getEntity().getContent());
-//      BufferedReader br = new BufferedReader(isr);
-//      br.readLine();
-//      String lnseq = br.readLine();
-//      if (
-//       Long.valueOf(lnseq.substring(lnseq.indexOf('=')+1)).longValue() 
-//       != sequence.getSequenceNumber().longValue())
-//        throw new IllegalStateException();
-//      String lntimestamp = br.readLine();
-//      String strtimestamp = lntimestamp.substring(
-//       lntimestamp.indexOf('=')+1).replaceAll("\\\\", "");
-//      Date dttimestamp = manipsax.m_dtFormat.parse(strtimestamp);
-//      diff.setTimestamp(dttimestamp);
+//      httpclientdiff = HttpClients.createDefault();
+////      HttpGet getdiffstate = new HttpGet(
+////       "http://planet.openstreetmap.org/replication/day/000/000/"
+////       +sequence.getSequenceNumber()
+////       +".state.txt");
+////      CloseableHttpResponse responsestate = httpclientdiff.execute(
+////       getdiffstate);
+////      InputStreamReader isr = new InputStreamReader(
+////       responsestate.getEntity().getContent());
+////      BufferedReader br = new BufferedReader(isr);
+////      br.readLine();
+////      String lnseq = br.readLine();
+////      if (
+////       Long.valueOf(lnseq.substring(lnseq.indexOf('=')+1)).longValue() 
+////       != sequence.getSequenceNumber().longValue())
+////        throw new IllegalStateException();
+////      String lntimestamp = br.readLine();
+////      String strtimestamp = lntimestamp.substring(
+////       lntimestamp.indexOf('=')+1).replaceAll("\\\\", "");
+////      Date dttimestamp = manipsax.m_dtFormat.parse(strtimestamp);
+////      diff.setTimestamp(dttimestamp);
       seqnumb = sequence.getSequenceNumber().longValue();
-      HttpGet getdiff = new HttpGet(
-       "http://planet.openstreetmap.org/replication/day/000/000/"
-       +seqnumb
-       +".osc.gz");
-      CloseableHttpResponse responsediff = httpclientdiff.execute(getdiff);
-      GZIPInputStream gzip = new GZIPInputStream(
-       responsediff.getEntity().getContent());
+//      HttpGet getdiff = new HttpGet(
+//       "http://planet.openstreetmap.org/replication/day/000/000/"
+//       +seqnumb
+//       +".osc.gz");
+//      CloseableHttpResponse responsediff = httpclientdiff.execute(getdiff);
+//      GZIPInputStream gzip = new GZIPInputStream(
+//       responsediff.getEntity().getContent());
+      readday = flux.diffDay(seqnumb);
       spf = SAXParserFactory.newInstance();
       spf.setNamespaceAware(true);
       sp = spf.newSAXParser();
       xmlrdiffs = sp.getXMLReader();
       xmlrdiffs.setContentHandler(manipsax);
       xmlrdiffs.parse(
-       new InputSource(gzip));
+//       new InputSource(gzip));
+       new InputSource(readday));
       //
-      gzip.close();
-      responsediff.close();
+//      gzip.close();
+//      responsediff.close();
+      readday.close();
       //
-      f_entités.getTransaction().commit();
+     f_entités.getTransaction().commit();
       /* */
       //
       // Fabriquer un rapport
@@ -379,7 +353,7 @@ public final class ContribsOSM implements java.io.Closeable
       GregorianCalendar datemédiane = new GregorianCalendar();
       datemédiane.setTime(sequence.getTimestamp());
       datemédiane.add(Calendar.DAY_OF_MONTH, -1);
-      CloseableHttpClient httpclient = HttpClients.createDefault();
+//      CloseableHttpClient httpclient = HttpClients.createDefault();
 //      for (Object resu : quer.getResultList())
       f_entités.getTransaction().begin();
       for (Contributeur buteur : f_tities.contributeurs())
@@ -388,23 +362,15 @@ public final class ContribsOSM implements java.io.Closeable
         ArrayList<Changeset> après;
         XMLReader xmlr;
         ManipUserSAX usersax;
-//        int nbchanges;
-        HttpGet getbuteur;
-        CloseableHttpResponse resbuteur;
-        InputStream isbuteur;
+        Reader rbuteur;
 
-//        buteur = (Contributeur)resu;
-        getbuteur = new HttpGet(
-         "http://api.openstreetmap.org/api/0.6/user/"+buteur.getUID());
-        resbuteur = httpclient.execute(getbuteur);
         xmlr = sp.getXMLReader();
         usersax = new ManipUserSAX();
         xmlr.setContentHandler(usersax);
-        isbuteur = resbuteur.getEntity().getContent();
-        xmlr.parse(new InputSource(isbuteur));
-        isbuteur.close();
-        resbuteur.close();
+        rbuteur = flux.user(buteur);
+        xmlr.parse(new InputSource(rbuteur));
         après = new ArrayList<>();
+        rbuteur.close();
         for (Changeset change : buteur.getChangesets())
           if (change.getChgTimestamp().after(datemédiane.getTime()))
             après.add(change);
@@ -412,63 +378,33 @@ public final class ContribsOSM implements java.io.Closeable
          ((usersax.nbChangeSets() - après.size() )< 10)  
          &&  (usersax.nbChangeSets() >= 10))
         {
-//          System.out.println(
-//           buteur.getUID()
-//           +" - "
-//           +usersax.displayName()
-//           +" - "
-//           +"http://www.openstreetmap.org/user/"
-//           +usersax.displayName());
           buteur.setPseudo(usersax.displayName());
           for (Changeset change : buteur.getChangesets())
           {
-              HttpGet getnomi;
-              CloseableHttpResponse respnomi;
-              InputStream isnomi;
-              BufferedReader isrnomi;
-              HttpGet getapi;
-              CloseableHttpResponse respapi;
-              InputStream isapi;
-              BufferedReader israpi;
               ManipChangesetSAX changesax;
               ManipNominatimSAX nomisax;
+              Reader rchange;
+              Reader rnomi;
 
-              getapi = new HttpGet(
-               "http://api.openstreetmap.org/api/0.6/changeset/"
-               +change.getIdSet());
-              respapi = httpclient.execute(getapi);
-              isapi = respapi.getEntity().getContent();
+              rchange = flux.changeset(change);
         xmlr = sp.getXMLReader();
         changesax = new ManipChangesetSAX();
         xmlr.setContentHandler(changesax);
-        xmlr.parse(new InputSource(isapi));
-        isapi.close();
-        respapi.close();
+        xmlr.parse(new InputSource(rchange));
+        rchange.close();
         change.setMaxLat(changesax.t_maxLat);
         change.setMaxLon(changesax.t_maxLon);
         change.setMinLat(changesax.t_minLat);
         change.setMinLon(changesax.t_minLon);
-              getnomi = new HttpGet(
-               "http://nominatim.openstreetmap.org/reverse?format=xml&lat="
-               +change.getMinLat()
-               +"&lon="
-               +change.getMaxLon());
-              respnomi = httpclient.execute(getnomi);
-              isnomi = respnomi.getEntity().getContent();
-//              isrnomi = new BufferedReader(new InputStreamReader(isnomi));
-//              String ligne = isrnomi.readLine();
-//              while (ligne != null)
-//              {
-//                System.out.println(ligne);
-//                ligne = isrnomi.readLine();
-//              }
-//              isrnomi.close();
+        rnomi = flux.lieu(change);
         xmlr = sp.getXMLReader();
         nomisax = new ManipNominatimSAX();
         xmlr.setContentHandler(nomisax);
-        xmlr.parse(new InputSource(isnomi));
-              isnomi.close();
-              respnomi.close();
+//        xmlr.parse(new InputSource(isnomi));
+//              isnomi.close();
+//              respnomi.close();
+        xmlr.parse(new InputSource(rnomi));
+        rnomi.close();
               change.setChgState(nomisax.t_chgState);
               change.setCountry(nomisax.t_country);
               change.setCountryCode(nomisax.t_countryCode);
