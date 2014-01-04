@@ -13,6 +13,9 @@ import com.google.common.util.concurrent.MoreExecutors;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.sql.Driver;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.concurrent.Executors;
@@ -56,7 +59,8 @@ public final class EnGarde implements ServletContextListener
     {
       sce.getServletContext().log("Et OOOOOoooouuuuiiiiii....");
       t_contribs = new ContribsOSM();
-      t_contribs.F_entités.getTransaction().begin();
+      t_contribs.f_entités.clear();
+      t_contribs.f_entités.getTransaction().begin();
       t_tities = t_contribs.f_tities;
       t_desDiffs = new EcouteurDesDiffs(t_contribs);
       t_exec = MoreExecutors.listeningDecorator(
@@ -76,7 +80,6 @@ public final class EnGarde implements ServletContextListener
   {
     try
     {
-      
       if (t_desDiffs != null)
         t_desDiffs.m_cliHTTP.close();
       if (t_exec != null)
@@ -84,16 +87,22 @@ public final class EnGarde implements ServletContextListener
       if (t_contribs != null)
       {
         EntityTransaction et;
+        Driver driv;
+        EntityManager mana;
         
-        et = t_contribs.F_entités.getTransaction(); 
+        mana = t_contribs.f_entités;
+        et = mana.getTransaction(); 
         if (et.isActive())
           if (!et.getRollbackOnly())
             et.commit();
+        driv = DriverManager.getDriver(
+         (String)mana.getProperties().get("javax.persistence.jdbc.url"));
         t_contribs.close();
+        DriverManager.deregisterDriver(driv);
       }
       sce.getServletContext().log("NOOOOOOOOoooooooonnnnn....");
     }
-    catch (IOException mince)
+    catch (IOException| SQLException mince)
     {
       sce.getServletContext().log(null, mince);
     }
@@ -154,6 +163,7 @@ public final class EnGarde implements ServletContextListener
             if (!em.getTransaction().isActive())
               em.getTransaction().begin();
             em.persist(diff);
+            em.flush();
             m_osm.analyseDayDiffEtFaitLeRapport(diff, m_fluxDeDiffs);
           }
           m_précédenteLigneDeSéquence = lnseq;

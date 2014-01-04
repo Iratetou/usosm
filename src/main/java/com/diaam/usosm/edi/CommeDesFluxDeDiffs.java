@@ -105,7 +105,6 @@ public interface CommeDesFluxDeDiffs
 
       getbuteur = new HttpGet(
        "http://api.openstreetmap.org/api/0.6/user/" + contributeur.getUID());
-System.out.println("getbuteur = "+getbuteur.getURI())          ;
       resbuteur = m_http.execute(getbuteur);
       isbuteur = resbuteur.getEntity().getContent();
       isr = new InputStreamReader(isbuteur);

@@ -36,60 +36,69 @@ public final class ApEnBean
   {
     return new java.util.AbstractMap<Long, String>() 
     {
+      private Set<Map.Entry<Long, String>> t_entries;
+      
+      {
+      }
+      
       @Override
       public Set<Map.Entry<Long, String>> entrySet()
       {
-        HashSet<Map.Entry<Long, String>> entries;
-        
-        entries = new HashSet<>();
-        for (Contributeur trib : m_tities.contributeurs())
+        if (t_entries == null)
         {
-          HashMap<String, String> paysrégions;
-          StringBuilder sb;
-          
-          paysrégions = new HashMap<>();
-          for (Changeset chg : trib.getChangesets())
-          {
-            String pays;
-            
-            pays = chg.getCountry();
-            if (pays != null)
-            {
-              String régions;
-              String state;
+          List<Contributeur> contribs;
 
-              pays = pays + " (" + chg.getCountryCode() + ')';
-              régions = paysrégions.get(pays);
-              if (régions == null)
-                régions = "";
-              state = chg.getChgState();
-              if (state != null)
-                if (!régions.contains(state))
-                {
-                  if (!régions.isEmpty())
-                    régions = régions + ", ";
-                  régions = régions + state;
-                  paysrégions.put(pays, régions);
-                }
-            }
-          }
-          sb = new StringBuilder();
-          for (String pays : paysrégions.keySet())
+          t_entries = new HashSet<>();
+          contribs = m_tities.contributeurs();
+          for (Contributeur trib : contribs)
           {
-            if (sb.length() != 0)
-              sb.append(" ; ");
-            sb.append(pays);
-            if (!Strings.isNullOrEmpty(paysrégions.get(pays)))
+            HashMap<String, String> paysrégions;
+            StringBuilder sb;
+
+            paysrégions = new HashMap<>();
+            for (Changeset chg : trib.getChangesets())
             {
-              sb.append(" : ");
-              sb.append(paysrégions.get(pays));
+              String pays;
+
+              pays = chg.getCountry();
+              if (pays != null)
+              {
+                String régions;
+                String state;
+
+                pays = pays + " (" + chg.getCountryCode() + ')';
+                régions = paysrégions.get(pays);
+                if (régions == null)
+                  régions = "";
+                state = chg.getChgState();
+                if (state != null)
+                  if (!régions.contains(state))
+                  {
+                    if (!régions.isEmpty())
+                      régions = régions + ", ";
+                    régions = régions + state;
+                    paysrégions.put(pays, régions);
+                  }
+              }
             }
+            sb = new StringBuilder();
+            for (String pays : paysrégions.keySet())
+            {
+              if (sb.length() != 0)
+                sb.append(" ; ");
+              sb.append(pays);
+              if (!Strings.isNullOrEmpty(paysrégions.get(pays)))
+              {
+                sb.append(" : ");
+                sb.append(paysrégions.get(pays));
+              }
+            }
+            t_entries.add(
+             new AbstractMap.SimpleEntry<>(trib.getUID(), sb.toString()));
           }
-          entries.add(
-           new AbstractMap.SimpleEntry<>(trib.getUID(), sb.toString()));
+          // ouf !
         }
-        // ouf !
-        return entries;
+        return t_entries;
       }
     };
   }

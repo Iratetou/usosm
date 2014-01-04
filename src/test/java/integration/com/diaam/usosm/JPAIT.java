@@ -84,7 +84,7 @@ public class JPAIT
     @Override
     public Reader diffDay(long séquence) throws IOException
     {
-      return new StringReader("");
+      return new StringReader("<osm/>");
     }
 
     @Override

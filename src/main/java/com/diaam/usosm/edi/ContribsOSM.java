@@ -25,6 +25,7 @@ import javax.persistence.*;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
+import org.slf4j.LoggerFactory;
 import org.xml.sax.Attributes;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
@@ -52,6 +53,10 @@ public final class ContribsOSM implements java.io.Closeable
     F_fabriqueDesEntités = Persistence.createEntityManagerFactory(
      "contribsosm");
     F_entités = F_fabriqueDesEntités.createEntityManager();
+    F_entités.setFlushMode(FlushModeType.COMMIT);
+    F_entités.getTransaction().begin();
+    F_entités.flush();
+    F_entités.getTransaction().commit();
   }
   
   public final Tities f_tities;
@@ -98,14 +103,16 @@ public final class ContribsOSM implements java.io.Closeable
     private String t_précédentUID;
     private String t_précédentChangeset;
     private Contributeur t_précédentContributeur;
-    LoadingCache<Long, Contributeur> contributeurs;
+    private final LoadingCache<Long, Contributeur> m_contributeurs;
+    private Tities m_tities;
 
-    ManipSAX(EntityManager entities)
+    ManipSAX(Tities tities)
     {
       m_dtFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
-      m_entities = entities;
+      m_tities = tities;
+      m_entities = m_tities.f_manager;
       m_selectCorrespondant = m_entities.createNamedQuery("un contributeur");
-      contributeurs = CacheBuilder.newBuilder()
+      m_contributeurs = CacheBuilder.newBuilder()
        .maximumSize(400)
        .build(
        new CacheLoader<Long, Contributeur>()
@@ -171,7 +178,7 @@ public final class ContribsOSM implements java.io.Closeable
               {
                 Contributeur buteur;
 
-                buteur = contributeurs.get(Long.parseLong(struid));
+                buteur = m_contributeurs.get(Long.parseLong(struid));
                   ajouteChangeSetSiAbsent(buteur, attributes);
                   if (buteur.getId() == null)
                     m_entities.persist(buteur);
@@ -202,10 +209,12 @@ public final class ContribsOSM implements java.io.Closeable
      Contributeur contributeur, Attributes xmlAttributs) throws ParseException
     {
       boolean changepaslà;
+      String idchangeset;
 
       changepaslà = true;
+      idchangeset = xmlAttributs.getValue("changeset");
       for (Changeset change : contributeur.getChangesets())
-        if (change.getIdSet().equals(xmlAttributs.getValue("changeset")))
+        if (change.getIdSet().equals(idchangeset))
         {
           changepaslà = false;
           break;
@@ -214,9 +223,17 @@ public final class ContribsOSM implements java.io.Closeable
       {
         Changeset change;
 
-//System.out.println("changeset="+xmlAttributs.getValue("changeset")+" "+contributeur.getNom()+" / "+xmlAttributs.getValue("user"));
+        // quelques fois à la suite de merdes, telles intterruptions brutales 
+        // du programme, le changeset est quand même là.
+        if (m_tities.changeset(idchangeset).isPresent())
+        {
+          change = m_tities.changeset(idchangeset).get();
+          m_entities.remove(change);
+          m_entities.flush();
+          LoggerFactory.getLogger(getClass()).warn("Éffacement de... "+change);
+        }
         change = new Changeset();
-        change.setIdSet(xmlAttributs.getValue("changeset"));
+        change.setIdSet(idchangeset);
         change.setChgTimestamp(
          m_dtFormat.parse(xmlAttributs.getValue("timestamp")));
         change.setMaxLat(xmlAttributs.getValue("max_lat"));
@@ -224,6 +241,7 @@ public final class ContribsOSM implements java.io.Closeable
         change.setMaxLat(xmlAttributs.getValue("max_lon"));
         change.setMaxLat(xmlAttributs.getValue("min_lon"));
         m_entities.persist(change);
+        m_entities.flush();
         contributeur.getChangesets().add(change);
       }
     }
@@ -289,43 +307,14 @@ public final class ContribsOSM implements java.io.Closeable
   {
     ManipSAX manipsax;
     long seqnumb;
-//    CloseableHttpClient httpclientdiff;
     SAXParserFactory spf;
     SAXParser sp;
     XMLReader xmlrdiffs;
     Rapport rap;
     Reader readday;
     
-      manipsax = new ManipSAX(f_entités);
-//      httpclientdiff = HttpClients.createDefault();
-////      HttpGet getdiffstate = new HttpGet(
-////       "http://planet.openstreetmap.org/replication/day/000/000/"
-////       +sequence.getSequenceNumber()
-////       +".state.txt");
-////      CloseableHttpResponse responsestate = httpclientdiff.execute(
-////       getdiffstate);
-////      InputStreamReader isr = new InputStreamReader(
-////       responsestate.getEntity().getContent());
-////      BufferedReader br = new BufferedReader(isr);
-////      br.readLine();
-////      String lnseq = br.readLine();
-////      if (
-////       Long.valueOf(lnseq.substring(lnseq.indexOf('=')+1)).longValue() 
-////       != sequence.getSequenceNumber().longValue())
-////        throw new IllegalStateException();
-////      String lntimestamp = br.readLine();
-////      String strtimestamp = lntimestamp.substring(
-////       lntimestamp.indexOf('=')+1).replaceAll("\\\\", "");
-////      Date dttimestamp = manipsax.m_dtFormat.parse(strtimestamp);
-////      diff.setTimestamp(dttimestamp);
+      manipsax = new ManipSAX(f_tities);
       seqnumb = sequence.getSequenceNumber().longValue();
-//      HttpGet getdiff = new HttpGet(
-//       "http://planet.openstreetmap.org/replication/day/000/000/"
-//       +seqnumb
-//       +".osc.gz");
-//      CloseableHttpResponse responsediff = httpclientdiff.execute(getdiff);
-//      GZIPInputStream gzip = new GZIPInputStream(
-//       responsediff.getEntity().getContent());
       readday = flux.diffDay(seqnumb);
       spf = SAXParserFactory.newInstance();
       spf.setNamespaceAware(true);
@@ -333,13 +322,8 @@ public final class ContribsOSM implements java.io.Closeable
       xmlrdiffs = sp.getXMLReader();
       xmlrdiffs.setContentHandler(manipsax);
       xmlrdiffs.parse(
-//       new InputSource(gzip));
        new InputSource(readday));
-      //
-//      gzip.close();
-//      responsediff.close();
       readday.close();
-      //
      f_entités.getTransaction().commit();
       /* */
       //

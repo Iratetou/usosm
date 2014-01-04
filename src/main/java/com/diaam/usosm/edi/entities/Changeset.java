@@ -9,9 +9,13 @@ import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
+import javax.persistence.NamedQueries;
+import javax.persistence.NamedQuery;
 import javax.persistence.Temporal;
 import javax.persistence.TemporalType;
 import javax.xml.bind.annotation.XmlRootElement;
+import org.eclipse.persistence.annotations.Cache;
+import org.eclipse.persistence.config.CacheIsolationType;
 
 /**
  *
@@ -19,6 +23,12 @@ import javax.xml.bind.annotation.XmlRootElement;
  */
 @Entity
 @XmlRootElement
+@NamedQueries(
+ {
+ @NamedQuery(
+ name = "Changeset.par idSet", 
+ query = "select c from Changeset c WHERE c.idSet = :idSet"),
+ })
 public class Changeset implements Serializable
 {
   private static final long serialVersionUID = 1L;
