@@ -32,6 +32,12 @@ public final class ApEnBean
     return m_tities.rapports();
   }
   
+  /**
+   * 
+   * 
+   * @return Un map dont la clef est le UID d'un contributeur, et la valeur
+   * la liste des noms des lieux géographiques modifiés.
+   */
   public Map<Long, String> getPlacesDeChangement()
   {
     return new java.util.AbstractMap<Long, String>() 

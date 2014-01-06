@@ -104,5 +104,10 @@ public class JPAIT
     {
       return new StringReader("");
     } 
+
+    @Override
+    public void close() throws IOException
+    {
+    }
   }
 }

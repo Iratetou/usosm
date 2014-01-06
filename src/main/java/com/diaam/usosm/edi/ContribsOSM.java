@@ -313,6 +313,8 @@ public final class ContribsOSM implements java.io.Closeable
     Rapport rap;
     Reader readday;
     
+      System.out.println(
+       "Début d'analyse du diff "+sequence.getSequenceNumber());
       manipsax = new ManipSAX(f_tities);
       seqnumb = sequence.getSequenceNumber().longValue();
       readday = flux.diffDay(seqnumb);
@@ -332,17 +334,12 @@ public final class ContribsOSM implements java.io.Closeable
       rap = new Rapport();
       rap.setDiff(sequence);
       rap.setBonsDébutants(new ArrayList<Contributeur>());
-//      Query quer = f_entités.createNamedQuery("tous les contributeurs");
-//      Date cejour = new Date();
       GregorianCalendar datemédiane = new GregorianCalendar();
       datemédiane.setTime(sequence.getTimestamp());
       datemédiane.add(Calendar.DAY_OF_MONTH, -1);
-//      CloseableHttpClient httpclient = HttpClients.createDefault();
-//      for (Object resu : quer.getResultList())
       f_entités.getTransaction().begin();
       for (Contributeur buteur : f_tities.contributeurs())
       {
-//        Contributeur buteur;
         ArrayList<Changeset> après;
         XMLReader xmlr;
         ManipUserSAX usersax;
@@ -384,9 +381,6 @@ public final class ContribsOSM implements java.io.Closeable
         xmlr = sp.getXMLReader();
         nomisax = new ManipNominatimSAX();
         xmlr.setContentHandler(nomisax);
-//        xmlr.parse(new InputSource(isnomi));
-//              isnomi.close();
-//              respnomi.close();
         xmlr.parse(new InputSource(rnomi));
         rnomi.close();
               change.setChgState(nomisax.t_chgState);

@@ -27,6 +27,7 @@ import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 import javax.servlet.annotation.WebListener;
 import javax.xml.parsers.ParserConfigurationException;
+import org.apache.http.ConnectionClosedException;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -83,7 +84,7 @@ public final class EnGarde implements ServletContextListener
       if (t_desDiffs != null)
         t_desDiffs.m_cliHTTP.close();
       if (t_exec != null)
-        t_exec.shutdown();
+        t_exec.shutdownNow();
       if (t_contribs != null)
       {
         EntityTransaction et;
@@ -134,12 +135,12 @@ public final class EnGarde implements ServletContextListener
       
       diff = null;
       em = m_osm.f_entités;
-      try
+      try (CommeDesFluxDeDiffs flux = m_fluxDeDiffs)
       {
         BufferedReader pl;
         String lnseq;
       
-        pl = new BufferedReader(m_fluxDeDiffs.state());
+        pl = new BufferedReader(flux.state());
         pl.readLine();
         lnseq = pl.readLine();
         if (!lnseq.equals(m_précédenteLigneDeSéquence))
@@ -164,18 +165,21 @@ public final class EnGarde implements ServletContextListener
               em.getTransaction().begin();
             em.persist(diff);
             em.flush();
-            m_osm.analyseDayDiffEtFaitLeRapport(diff, m_fluxDeDiffs);
+            m_osm.analyseDayDiffEtFaitLeRapport(diff, flux);
           }
           m_précédenteLigneDeSéquence = lnseq;
         }
         pl.close();
       }
-      catch (SAXParseException parsex)
+      catch (SAXParseException|ConnectionClosedException parsex)
       {
         LoggerFactory.getLogger(getClass()).warn(
          diff == null ? "diff null" : diff.toString(), parsex);
         if (diff != null)
+        {
+          em.getTransaction().rollback();
           em.remove(diff);
+        }
       }
       catch (
        IOException
@@ -210,6 +214,9 @@ public final class EnGarde implements ServletContextListener
     @Override
     public void onFailure(Throwable t)
     {
+      System.err.println("en onFailure");
+      t.printStackTrace();
+      System.err.println("FIN en onFailure");
       LoggerFactory.getLogger(getClass()).warn("", t);
     }  
   }

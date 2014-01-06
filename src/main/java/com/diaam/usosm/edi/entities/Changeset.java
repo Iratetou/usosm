@@ -87,7 +87,12 @@ public class Changeset implements Serializable
   @Override
   public String toString()
   {
-    return "com.diaam.contribsosm.entities.Changeset[ id=" + id + " ]";
+    return 
+     "com.diaam.contribsosm.entities.Changeset[ id=" 
+     + id 
+     + ", idSet=" 
+     + idSet 
+     + " ]";
   }
 
   public String getIdSet()
