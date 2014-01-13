@@ -74,7 +74,7 @@ public interface CommeDesFluxDeDiffs extends java.io.Closeable
     public Reader diffDay(long séquence) throws IOException
     {
       HttpGet getdiff;
-      GZIPInputStream gzip;
+      final GZIPInputStream gzip;
       final InputStreamReader isr;
       final CloseableHttpResponse responsediff;
       Reader rdiff;
@@ -98,7 +98,9 @@ public interface CommeDesFluxDeDiffs extends java.io.Closeable
         public void close() throws IOException
         {
           isr.close();
+          gzip.close();
           responsediff.close();
+System.out.println(getClass().toString()+" bien fermé (j'espère).");
         }
       };
       m_àCloser.add(rdiff);

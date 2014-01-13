@@ -1,11 +1,11 @@
 /*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
  */
 package com.diaam.usosm;
 
+import com.diaam.usosm.edi.entities.Changeset;
 import com.diaam.usosm.edi.entities.Contributeur;
 import com.diaam.usosm.edi.entities.Rapport;
+import com.google.common.base.Strings;
 import com.sun.syndication.feed.synd.SyndContentImpl;
 import com.sun.syndication.feed.synd.SyndEntryImpl;
 import com.sun.syndication.feed.synd.SyndFeedImpl;
@@ -13,6 +13,7 @@ import com.sun.syndication.io.FeedException;
 import com.sun.syndication.io.SyndFeedOutput;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Map;
 import javax.servlet.ServletException;
@@ -77,11 +78,25 @@ public class Feeds extends HttpServlet
       ArrayList<SyndEntryImpl> entries;
       ApEnBean ap;
       Map<Long, String> places;
+      String reqgéo;
+      String reqgéocodé;
 
       synd = new SyndFeedImpl();
       synd.setFeedType("atom_1.0");
       synd.setAuthor("usosm");
-      synd.setTitle("usosm : débutants (>10 diffs) sur osm");
+      reqgéocodé = request.getRequestURI().substring(
+       request.getRequestURI().indexOf(request.getServletPath())+request.getServletPath().length());
+      reqgéo = URLDecoder.decode(reqgéocodé, "UTF-8");
+      if (Strings.isNullOrEmpty(reqgéo))
+        synd.setTitle(
+         "usosm : débutants (>10 diffs) sur osm");
+      else
+      {
+        synd.setTitle(
+         "usosm : débutants (>10 diffs) sur osm pour "
+         + URLDecoder.decode(reqgéo, "UTF-8"));
+        reqgéo = reqgéo.substring(1);
+      }
       entries = new ArrayList<>();
       ap = (ApEnBean) request.getServletContext().getAttribute("ap");
       places = ap.getPlacesDeChangement();
@@ -89,22 +104,56 @@ public class Feeds extends HttpServlet
       {
         for (Contributeur trib : rap.getBonsDébutants())
         {
-          SyndEntryImpl entri;
-          SyndContentImpl contdiff;
+          boolean tribok;
+          
+          tribok = Strings.isNullOrEmpty(reqgéo);
+          if (!tribok)
+          {
+            if (reqgéo.contains("/"))
+            {
+              String codepays;
+              
+              codepays = reqgéo.substring(0, reqgéo.indexOf('/'));
+              for (Changeset chg : trib.getChangesets())
+              {
+                boolean chgok;
+                
+                chgok = codepays.equals(chg.getCountryCode())  
+                 &&  reqgéo.substring(reqgéo.indexOf('/')+1).equals(chg.getChgState());
+                if (chgok)
+                {
+                  tribok = true;
+                  break;
+                }
+              }
+            }
+            else
+              for (Changeset chg : trib.getChangesets())
+                if (reqgéo.equals(chg.getCountryCode()))
+                {
+                  tribok = true;
+                  break;
+                }
+          }
+          if (tribok)
+          {
+            SyndEntryImpl entri;
+            SyndContentImpl contdiff;
 
-          entri = new SyndEntryImpl();
-          entri.setTitle(trib.getPseudo());
-          entri.setPublishedDate(rap.getDiff().getTimestamp());
-          entri.setLink("http://www.openstreetmap.org/user/"+trib.getPseudo());
-          entri.setAuthor("usosm");
-          contdiff = new SyndContentImpl();
-          contdiff.setValue(
-           "Du diff journalier "
-           +rap.getDiff().getSequenceNumber()
-           +"pour les lieux suivants : "
-           +places.get(trib.getUID()));
-          entri.setDescription(contdiff);
-          entries.add(entri);
+            entri = new SyndEntryImpl();
+            entri.setTitle(trib.getPseudo());
+            entri.setPublishedDate(rap.getDiff().getTimestamp());
+            entri.setLink("http://www.openstreetmap.org/user/"+trib.getPseudo());
+            entri.setAuthor("usosm");
+            contdiff = new SyndContentImpl();
+            contdiff.setValue(
+             "Du diff journalier "
+             +rap.getDiff().getSequenceNumber()
+             +" pour les lieux suivants : "
+             +places.get(trib.getUID()));
+            entri.setDescription(contdiff);
+            entries.add(entri);
+          }
         }
       }
       synd.setEntries(entries);

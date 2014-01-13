@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import org.xml.sax.Attributes;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
 import org.xml.sax.XMLReader;
 
 /**
@@ -62,12 +63,15 @@ public final class ContribsOSM implements java.io.Closeable
   public final Tities f_tities;
   private final EntityManagerFactory f_fabriqueDesEntités;
   public final EntityManager f_entités;
+  private final SAXParserFactory f_saxFactory;
 
   public ContribsOSM()
   {
     f_tities = new Tities(F_entités);
     f_fabriqueDesEntités = F_fabriqueDesEntités;
     f_entités = F_entités;
+    f_saxFactory = SAXParserFactory.newInstance();
+    f_saxFactory.setNamespaceAware(true);
   }
   
   /**
@@ -86,6 +90,8 @@ public final class ContribsOSM implements java.io.Closeable
      "contribsosm", mapJPA);
     f_entités = f_fabriqueDesEntités.createEntityManager();
     f_tities = new Tities(f_entités);
+    f_saxFactory = SAXParserFactory.newInstance();
+    f_saxFactory.setNamespaceAware(true);
   }
   
   @Override
@@ -141,67 +147,67 @@ public final class ContribsOSM implements java.io.Closeable
 
     @Override
     public void startElement(
-     String uri, String localName, String qName, Attributes attributes) throws 
+     String uri, String localName, String qName, Attributes attributes) throws
      SAXException
     {
-      try
+      if (!Thread.currentThread().isInterrupted())
       {
-        switch (localName)
+        try
         {
-          case "osm":
-          case "bounds":
-          case "tag":
-          case "nd":
-          case "member":
-          case "osmChange":
-          case "modify":
-          case "delete":
-          case "create":
-            break;
-          case "node":
-          case "way":
-          case "relation":
-            String strchange;
-            boolean mêmequeprécédent;
-            String struid;
+          switch (localName)
+          {
+            case "osm":
+            case "bounds":
+            case "tag":
+            case "nd":
+            case "member":
+            case "osmChange":
+            case "modify":
+            case "delete":
+            case "create":
+              break;
+            case "node":
+            case "way":
+            case "relation":
+              String strchange;
+              boolean mêmequeprécédent;
+              String struid;
 
-            strchange = attributes.getValue("changeset");
-            struid = attributes.getValue("uid");
-            mêmequeprécédent = 
-             struid.equals(t_précédentUID) 
-             && strchange.equals(t_précédentChangeset);
-            if (!mêmequeprécédent)
-            {
-              if (struid.equals(t_précédentUID))
-                ajouteChangeSetSiAbsent(t_précédentContributeur, attributes);
-              else
+              strchange = attributes.getValue("changeset");
+              struid = attributes.getValue("uid");
+              mêmequeprécédent =
+               struid.equals(t_précédentUID)
+               && strchange.equals(t_précédentChangeset);
+              if (!mêmequeprécédent)
               {
-                Contributeur buteur;
+                if (struid.equals(t_précédentUID))
+                  ajouteChangeSetSiAbsent(t_précédentContributeur, attributes);
+                else
+                {
+                  Contributeur buteur;
 
-                buteur = m_contributeurs.get(Long.parseLong(struid));
+                  buteur = m_contributeurs.get(Long.parseLong(struid));
                   ajouteChangeSetSiAbsent(buteur, attributes);
                   if (buteur.getId() == null)
                     m_entities.persist(buteur);
-//                }
-                t_précédentContributeur = buteur;
+                  t_précédentContributeur = buteur;
+                }
+                t_précédentUID = struid;
+                t_précédentChangeset = strchange;
               }
-//              t_précédentUID = struser;
-              t_précédentUID = struid;
-              t_précédentChangeset = strchange;
-            }
-            break;
-          default:
-            throw new IllegalStateException(
-             "uri=" + uri + ", localName=" + localName + ", qName=" + qName);
+              break;
+            default:
+              throw new IllegalStateException(
+               "uri=" + uri + ", localName=" + localName + ", qName=" + qName);
+          }
         }
-      }
-      catch (ParseException|ExecutionException mince)
-      {
-        throw new IllegalStateException(mince);
-      }
-      finally
-      {
-         
+        catch (ParseException | ExecutionException mince)
+        {
+          throw new IllegalStateException(mince);
+        }
+        finally
+        {
+        }
       }
     }
     
@@ -230,7 +236,8 @@ public final class ContribsOSM implements java.io.Closeable
           change = m_tities.changeset(idchangeset).get();
           m_entities.remove(change);
           m_entities.flush();
-          LoggerFactory.getLogger(getClass()).warn("Éffacement de... "+change);
+          LoggerFactory.getLogger(
+           getClass()).warn("Éffacement de... " + change);
         }
         change = new Changeset();
         change.setIdSet(idchangeset);
@@ -246,7 +253,7 @@ public final class ContribsOSM implements java.io.Closeable
       }
     }
   }
-  
+
   private static class ManipUserSAX extends org.xml.sax.helpers.DefaultHandler
   {
     private int m_nbChangeSets;
@@ -289,6 +296,14 @@ public final class ContribsOSM implements java.io.Closeable
         throw new IllegalStateException();
       return m_displayName;
     }
+    
+    void positionneEnErreur()
+    {
+      if (m_nbChangeSets < 0)
+        m_nbChangeSets = 0;
+      if (m_displayName.isEmpty())
+        m_displayName = "?sur appel osm?";
+    }
   }
   
   public static URI uriDiffs()
@@ -307,7 +322,6 @@ public final class ContribsOSM implements java.io.Closeable
   {
     ManipSAX manipsax;
     long seqnumb;
-    SAXParserFactory spf;
     SAXParser sp;
     XMLReader xmlrdiffs;
     Rapport rap;
@@ -318,15 +332,15 @@ public final class ContribsOSM implements java.io.Closeable
       manipsax = new ManipSAX(f_tities);
       seqnumb = sequence.getSequenceNumber().longValue();
       readday = flux.diffDay(seqnumb);
-      spf = SAXParserFactory.newInstance();
-      spf.setNamespaceAware(true);
-      sp = spf.newSAXParser();
+      sp = f_saxFactory.newSAXParser();
       xmlrdiffs = sp.getXMLReader();
       xmlrdiffs.setContentHandler(manipsax);
       xmlrdiffs.parse(
        new InputSource(readday));
       readday.close();
-     f_entités.getTransaction().commit();
+    if (!Thread.currentThread().isInterrupted())
+    {
+      f_entités.getTransaction().commit();
       /* */
       //
       // Fabriquer un rapport
@@ -339,35 +353,56 @@ public final class ContribsOSM implements java.io.Closeable
       datemédiane.add(Calendar.DAY_OF_MONTH, -1);
       f_entités.getTransaction().begin();
       for (Contributeur buteur : f_tities.contributeurs())
+        ajouteUnContributeurSiBonDébutant(
+         new AnalyseurDeContributeur(flux, datemédiane, rap), buteur);
+      f_entités.persist(rap);
+      f_entités.getTransaction().commit();
+      System.out.println("Merci c'est tout.");
+    }
+    else
+      System.out.println("Merci mais j'ai été interrompu.");
+  }
+
+  private void ajouteUnContributeurSiBonDébutant(
+   AnalyseurDeContributeur analyseur, Contributeur buteur)
+   throws SAXException, IOException, ParserConfigurationException
+  {
+    ArrayList<Changeset> après;
+    XMLReader xmlr;
+    ManipUserSAX usersax;
+    SAXParser sp;
+    CommeDesFluxDeDiffs flux;
+    int nbchanges;
+
+    sp = f_saxFactory.newSAXParser();
+    xmlr = sp.getXMLReader();
+    usersax = new ManipUserSAX();
+    xmlr.setContentHandler(usersax);
+    flux = analyseur.m_flux;
+    try (Reader rbuteur = flux.user(buteur))
+    {
+      xmlr.parse(new InputSource(rbuteur));
+    }
+    catch (SAXParseException mince)
+    {
+      usersax.positionneEnErreur();
+    }
+    après = new ArrayList<>();
+    for (Changeset change : buteur.getChangesets())
+      if (change.getChgTimestamp().after(analyseur.m_dateMédiane.getTime()))
+        après.add(change);
+    nbchanges = usersax.nbChangeSets();
+    if (((nbchanges - après.size()) < 10) && (nbchanges >= 10))
+    {
+      buteur.setPseudo(usersax.displayName());
+      for (Changeset change : buteur.getChangesets())
       {
-        ArrayList<Changeset> après;
-        XMLReader xmlr;
-        ManipUserSAX usersax;
-        Reader rbuteur;
+        ManipChangesetSAX changesax;
+        ManipNominatimSAX nomisax;
+        Reader rchange;
+        Reader rnomi;
 
-        xmlr = sp.getXMLReader();
-        usersax = new ManipUserSAX();
-        xmlr.setContentHandler(usersax);
-        rbuteur = flux.user(buteur);
-        xmlr.parse(new InputSource(rbuteur));
-        après = new ArrayList<>();
-        rbuteur.close();
-        for (Changeset change : buteur.getChangesets())
-          if (change.getChgTimestamp().after(datemédiane.getTime()))
-            après.add(change);
-        if (
-         ((usersax.nbChangeSets() - après.size() )< 10)  
-         &&  (usersax.nbChangeSets() >= 10))
-        {
-          buteur.setPseudo(usersax.displayName());
-          for (Changeset change : buteur.getChangesets())
-          {
-              ManipChangesetSAX changesax;
-              ManipNominatimSAX nomisax;
-              Reader rchange;
-              Reader rnomi;
-
-              rchange = flux.changeset(change);
+        rchange = flux.changeset(change);
         xmlr = sp.getXMLReader();
         changesax = new ManipChangesetSAX();
         xmlr.setContentHandler(changesax);
@@ -383,21 +418,16 @@ public final class ContribsOSM implements java.io.Closeable
         xmlr.setContentHandler(nomisax);
         xmlr.parse(new InputSource(rnomi));
         rnomi.close();
-              change.setChgState(nomisax.t_chgState);
-              change.setCountry(nomisax.t_country);
-              change.setCountryCode(nomisax.t_countryCode);
-              change.setCounty(nomisax.t_county);
-           }
-          rap.getBonsDébutants().add(buteur);
-        }
+        change.setChgState(nomisax.t_chgState);
+        change.setCountry(nomisax.t_country);
+        change.setCountryCode(nomisax.t_countryCode);
+        change.setCounty(nomisax.t_county);
       }
-      f_entités.persist(rap);
-      f_entités.getTransaction().commit();
-      System.out.println("Merci c'est tout.");
+      analyseur.m_rapport.getBonsDébutants().add(buteur);
+    }
   }
   
-  private static class ManipChangesetSAX extends 
-   org.xml.sax.helpers.DefaultHandler
+  private static class ManipChangesetSAX extends   org.xml.sax.helpers.DefaultHandler
   {
     String t_minLat;
     String t_maxLat;
@@ -445,6 +475,107 @@ public final class ContribsOSM implements java.io.Closeable
     {
       switch (t_élément)
       {
+        case "reversegeocode":
+        case "result":
+        case "road":
+        case "continent":
+        case "city":
+        case "postcode":
+        case "administrative":
+        case "house_number":
+        case "water": // ça existe !?
+        case "hamlet":
+        case "florist":
+        case "village":
+        case "building":
+        case "suburb":
+        case "state_district":
+        case "fast_food":
+        case "city_district":
+        case "bakery":
+        case "bus_stop":
+        case "neighbourhood":
+        case "courthouse":
+        case "restaurant":
+        case "place_of_worship":
+        case "school":
+        case "convenience":
+        case "house":
+        case "town":
+        case "path":
+        case "footway":
+        case "post_box":
+        case "doityourself":
+        case "chemist":
+        case "address29":
+        case "information":
+        case "cycleway":
+        case "residential":
+        case "hospital":
+        case "kindergarten":
+        case "college":
+        case "monument":
+        case "cemetery":
+        case "retail":
+        case "townhall":
+        case "furniture":
+        case "hairdresser":
+        case "sports":
+        case "pharmacy":
+        case "car_repair":
+        case "yes":
+        case "computer":
+        case "park":
+        case "library":
+        case "parking":
+        case "pitch":
+        case "books":
+        case "raceway":
+        case "attraction":
+        case "pedestrian":
+        case "stadium":
+        case "artwork":
+        case "mall":
+        case "atm":
+        case "theatre":
+        case "address26":
+        case "garden_centre":
+        case "fuel":
+        case "bank":
+        case "supermarket":
+        case "cafe":
+        case "bar":
+        case "hardware":
+        case "clothes":
+        case "police":
+        case "shoes":
+        case "department_store":
+        case "pub":
+        case "electronics":
+        case "dry_cleaning":
+        case "sports_centre":
+        case "doctors":
+        case "industrial":
+        case "guest_house":
+        case "post_office":
+        case "hostel":
+        case "optician":
+        case "fire_station":
+        case "memorial":
+        case "picnic_site":
+        case "public_building":
+        case "hotel":
+        case "forest":
+        case "university":
+        case "beverages":
+        case "recycling":
+        case "museum":
+        case "alcohol":
+        case "playground":
+        case "commercial":
+        case "beach":
+        case "butcher":
+          break;
         case "country_code":
         case "country":
         case "state":
@@ -468,7 +599,24 @@ public final class ContribsOSM implements java.io.Closeable
               break;
           }
           break;
+        default:
+          System.out.println("OOO t_élément="+t_élément+"//"+(new String(Arrays.copyOfRange(ch, start, start + length))));
       }
+    }
+  }
+  
+  private class AnalyseurDeContributeur
+  {
+    private final CommeDesFluxDeDiffs m_flux;
+    private final GregorianCalendar m_dateMédiane;
+    private final Rapport m_rapport;
+    
+    AnalyseurDeContributeur(
+     CommeDesFluxDeDiffs flux, GregorianCalendar dateMédiane, Rapport rapp)
+    {
+      m_flux = flux;
+      m_dateMédiane = dateMédiane;
+      m_rapport = rapp;
     }
   }
 }

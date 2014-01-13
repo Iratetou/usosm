@@ -178,7 +178,8 @@ public final class EnGarde implements ServletContextListener
         if (diff != null)
         {
           em.getTransaction().rollback();
-          em.remove(diff);
+          if (em.contains(diff))
+            em.remove(diff);
         }
       }
       catch (

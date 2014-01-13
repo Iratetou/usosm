@@ -22,13 +22,30 @@
             </a>
           </p>
         </div>
-        <!-- en cours
         <div>
           Pour obtenir un lien vers le flux donnant les nouveaux contributeurs
-          sur une région donnée, cliquez sur cette région sur la carte.
+          sur la région voulue, cliquez sur cette région sur la carte.
           <div id="map"></div>
+          <div>
+            <div>
+              <div id="infonominatim"></div>
+              <div>
+                Code pays : 
+                <span id="countrycode"></span>
+                <input type="radio" name="region" value="country" id="countryradio">
+              </div>
+              <div>
+                Région : 
+                <span id="state"></span>
+                <input type="radio" name="region" value="region" checked id="regionradio">
+              </div>
+              <div>
+                <b>Voilà le lien pour le flux correspondant :<br><span id="lienflux">[Cliquez sur la carte SVP.]</span></b>
+              </div>
+            </div>
+            <a href="feeds/">Flux pour obtenir tous les débutants</a>.
+          </div>
         </div>
-        -->
         <div>
           OK OK OK mais je veux 
           <a href="tout.jsp">voir TOUS LES RESULTATS DIRECTEMENT</a>
@@ -36,18 +53,6 @@
         </div>
         <script src="os/jquery-2.0.3.min.js"></script>
         <script src="os/leaflet-0.7.1/leaflet.js"></script>
-        <script>
-      		var map = L.map('map').setView([45.90, 1.52], 5); // Vive la France !
-          L.tileLayer('http://{s}.tile.cloudmade.com/cbc8737401f34e66a7a677942960dedd/997/256/{z}/{x}/{y}.png', {
-          attribution: 'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="http://cloudmade.com">CloudMade</a>'
-          //maxZoom: 18
-          })
-          .addTo(map);          
-          function onMapClick(e) {
-              alert("You clicked the map at " + e.latlng);
-          }
-
-          map.on('click', onMapClick);
-        </script>
+        <script src="design/index.js"></script>
     </body>
 </html>
