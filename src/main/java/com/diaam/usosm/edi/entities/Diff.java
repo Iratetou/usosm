@@ -77,7 +77,8 @@ public class Diff implements Serializable
   @Override
   public String toString()
   {
-    return "com.diaam.contribsosm.entities.Diff[ id=" + id + " ]";
+    return 
+     "com.diaam.contribsosm.entities.Diff[ id=" + id + ", sequenceNumber=" + sequenceNumber + " ]";
   }
 
   public Long getSequenceNumber()

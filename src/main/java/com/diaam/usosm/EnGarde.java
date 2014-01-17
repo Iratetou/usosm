@@ -174,12 +174,15 @@ public final class EnGarde implements ServletContextListener
       catch (SAXParseException|ConnectionClosedException parsex)
       {
         LoggerFactory.getLogger(getClass()).warn(
-         diff == null ? "diff null" : diff.toString(), parsex);
+         "Diff : " + (diff == null ? "diff null" : diff.toString()), parsex);
         if (diff != null)
         {
           em.getTransaction().rollback();
           if (em.contains(diff))
+          {
             em.remove(diff);
+            em.flush();
+          }
         }
       }
       catch (
